@@ -9,6 +9,12 @@ module Spree
     scope :jsons, -> { where(object_type: 'json') }
     scope :storable_envs, -> { where(name: ['company_code', 'license_key', 'account', 'endpoint']) }
 
+    def self.get_all_preferences
+      params = Hash.new
+      pluck(:name, :value).each { |e| params[e[0]] = e[1] }
+      return params
+    end
+
     def self.company_code
       find_by(name: 'company_code')
     end

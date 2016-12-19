@@ -1,3 +1,4 @@
+require 'active_record'
 require 'json'
 require 'net/http'
 require 'addressable/uri'
@@ -42,19 +43,20 @@ class TaxSvc
   end
 
   def estimate_tax(coordinates, sale_amount)
-    if tax_calculation_enabled?
+    prefs = Spree::AvalaraPreference.get_all_preferences
+    if tax_calculation_enabled(prefs) == true
       log(__method__)
 
       return nil if coordinates.nil?
       sale_amount = 0 if sale_amount.nil?
       coor = coordinates[:latitude].to_s + ',' + coordinates[:longitude].to_s
 
-      uri = URI(service_url + coor + '/get?saleamount=' + sale_amount.to_s)
+      uri = URI(service_url(prefs) + coor + '/get?saleamount=' + sale_amount.to_s)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
       http.verify_mode = OpenSSL::SSL::VERIFY_NONE
 
-      res = http.get(uri.request_uri, 'Authorization' => credential, 'Content-Type' => 'application/json')
+      res = http.get(uri.request_uri, 'Authorization' => credential(prefs), 'Content-Type' => 'application/json')
       JSON.parse(res.body)
     end
   rescue => e
@@ -68,11 +70,12 @@ class TaxSvc
   end
 
   def validate_address(address)
-    uri = URI(address_service_url + address.to_query)
+    prefs = Spree::AvalaraPreference.get_all_preferences
+    uri = URI(address_service_url(prefs) + address.to_query)
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
     http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-    res = http.get(uri.request_uri, 'Authorization' => credential)
+    res = http.get(uri.request_uri, 'Authorization' => credential(prefs))
 
     logger.debug res
 
@@ -89,37 +92,39 @@ class TaxSvc
 
   private
 
-  def tax_calculation_enabled?
-    Spree::AvalaraPreference.tax_calculation.is_true?
+  def tax_calculation_enabled(prefs)
+    ActiveRecord::Type::Boolean.new.cast(prefs["tax_calculation"])
   end
 
-  def credential
-    'Basic ' + Base64.encode64(account_number + ':' + license_key)
+  def credential(prefs)
+    'Basic ' + Base64.encode64(prefs["account_number"] + ':' + prefs["license_key"])
   end
 
-  def service_url
-    Spree::AvalaraPreference.endpoint.value + AVATAX_SERVICEPATH_TAX
+  def service_url(prefs)
+    prefs["endpoint"] + AVATAX_SERVICEPATH_TAX
   end
 
-  def address_service_url
-    Spree::AvalaraPreference.endpoint.value + AVATAX_SERVICEPATH_ADDRESS + 'validate?'
+  def address_service_url(prefs)
+    prefs["endpoint"] + AVATAX_SERVICEPATH_ADDRESS + 'validate?'
   end
 
-  def license_key
-    Spree::AvalaraPreference.license_key.value
+  def license_key(prefs)
+    prefs["license_key"]
   end
 
-  def account_number
-    Spree::AvalaraPreference.account.value
+  def (prefs)
+    prefs["account"]
   end
 
   def response(uri, request_hash)
+    prefs = Spree::AvalaraPreference.get_all_preferences
+
     res = RestClient::Request.execute(method: :post,
                                 timeout: 5,
-                                url: service_url + uri,
+                                url: service_url(prefs) + uri,
                                 payload:  JSON.generate(request_hash),
                                 headers: {
-                                  authorization: credential,
+                                  authorization: credential(prefs),
                                   content_type: 'application/json'
                                 }
     )  do |response, request, result|
