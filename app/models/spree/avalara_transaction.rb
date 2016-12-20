@@ -83,7 +83,6 @@ module Spree
         Commit: commit,
         DocType: invoice_detail ? invoice_detail : 'SalesOrder',
         # Toss any addresses missing minimal information to successfully call Avalara with.
-        # Figure-out why deleted all addresses.  :(
         Addresses: avatax_address.addresses.delete_if {
             |address| (address[:AddressCode].nil? || (address[:City].nil? && address[:Region].nil? && address[:PostalCode].nil?) || address[:Country].nil?) },
         Lines: avatax_line.lines
