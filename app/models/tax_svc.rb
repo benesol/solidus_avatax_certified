@@ -112,7 +112,7 @@ class TaxSvc
     prefs["license_key"]
   end
 
-  def (prefs)
+  def account_number(prefs)
     prefs["account"]
   end
 
