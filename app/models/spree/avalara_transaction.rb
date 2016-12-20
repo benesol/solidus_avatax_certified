@@ -82,7 +82,9 @@ module Spree
         Discount: order.all_adjustments.promotion.eligible.sum(:amount).abs.to_s,
         Commit: commit,
         DocType: invoice_detail ? invoice_detail : 'SalesOrder',
-        Addresses: avatax_address.addresses,
+        # Toss any addresses missing minimal information to successfully call Avalara with.
+        Addresses: avatax_address.addresses.delete_if {
+            |address| address["Code"].nil? || (address["City"].nil? && address["Region"].nil? && address["PostalCode"].nil?) || address["Country"].nil? },
         Lines: avatax_line.lines
       }.merge(base_tax_hash)
 
@@ -119,7 +121,9 @@ module Spree
         DocDate: Date.today.strftime('%F'),
         Commit: commit,
         DocType: invoice_detail ? invoice_detail : 'ReturnOrder',
-        Addresses: avatax_address.addresses,
+        # Toss any addresses missing minimal information to successfully call Avalara with.
+        Addresses: avatax_address.addresses.delete_if {
+            |address| address["Code"].nil? || (address["City"].nil? && address["Region"].nil? && address["PostalCode"].nil?) || address["Country"].nil? },
         Lines: avatax_line.lines
       }.merge(base_tax_hash)
 

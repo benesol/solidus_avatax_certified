@@ -42,6 +42,8 @@ module SolidusAvataxCertified
         Line1: @ship_address.address1,
         Line2: @ship_address.address2,
         City: @ship_address.city,
+        # Is nil in @ship_address object, though state_id is correct.
+        # TODO: Look-up state_name via state_id when state_name.nil?
         Region: @ship_address.state_name,
         Country: @ship_address.country.try(:iso),
         PostalCode: @ship_address.zipcode
