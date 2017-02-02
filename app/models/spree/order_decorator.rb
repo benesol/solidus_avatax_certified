@@ -11,6 +11,13 @@ Spree::Order.class_eval do
                                       :do => :validate_ship_address,
                                       :if => :address_validation_enabled?
 
+  # Credit card tokens are to be stored in the Platform database and not in Solidus.
+  # Setting this to true will prevent that from happening.
+  def temporary_credit_card
+    Rails.logger.debug "temporary_credit_card is TRUE in Avatax Certified Order decorator"
+    true
+  end
+
   def avalara_tax_enabled?
     Spree::AvalaraPreference.tax_calculation.is_true?
   end
