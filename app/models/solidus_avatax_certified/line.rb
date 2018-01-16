@@ -1,6 +1,9 @@
+require 'spree/tax/tax_helpers'
+
 module SolidusAvataxCertified
   class Line
     attr_reader :order, :lines
+    include Spree::Tax::TaxHelpers
 
     def initialize(order, invoice_type, refund = nil)
       @order = order
@@ -18,24 +21,23 @@ module SolidusAvataxCertified
         item_lines_array
         shipment_lines_array
       end
-
-      logger.debug @lines
     end
 
     def item_line(line_item)
       {
-        LineNo: "#{line_item.id}-LI",
-        Description: line_item.name[0..255],
-        TaxCode: line_item.tax_category.try(:tax_code) || '',
-        ItemCode: line_item.variant.sku,
-        Qty: line_item.quantity,
-        Amount: line_item.amount.to_f,
-        OriginCode: get_stock_location(line_item),
-        DestinationCode: 'Dest',
-        CustomerUsageType: order.customer_usage_type,
-        Discounted: discounted?(line_item),
-        TaxIncluded: tax_included_in_price?(line_item)
-      }
+        number: "#{line_item.id}-LI",
+        description: line_item.name[0..255],
+        taxCode: line_item.tax_category.try(:tax_code) || '',
+        itemCode: line_item.variant.sku,
+        quantity: line_item.quantity,
+        amount: line_item.amount.to_f,
+        discounted: discounted?(line_item),
+        taxIncluded: tax_included_in_price?(line_item),
+        addresses: {
+          shipFrom: get_stock_location(line_item),
+          shipTo: ship_to
+        }
+      }.merge(base_line_hash)
     end
 
     def item_lines_array
@@ -53,18 +55,19 @@ module SolidusAvataxCertified
 
     def shipment_line(shipment)
       {
-        LineNo: "#{shipment.id}-FR",
-        ItemCode: shipment.shipping_method.name,
-        Qty: 1,
-        Amount: shipment.discounted_amount.to_f,
-        OriginCode: "#{shipment.stock_location_id}",
-        DestinationCode: 'Dest',
-        CustomerUsageType: order.customer_usage_type,
-        Description: 'Shipping Charge',
-        TaxCode: shipment.shipping_method_tax_code,
-        Discounted: false,
-        TaxIncluded: tax_included_in_price?(shipment)
-      }
+        number: "#{shipment.id}-FR",
+        itemCode: shipment.shipping_method.name,
+        quantity: 1,
+        amount: shipment.discounted_amount.to_f,
+        description: 'Shipping Charge',
+        taxCode: shipment.shipping_method_tax_code,
+        discounted: false,
+        taxIncluded: tax_included_in_price?(shipment),
+        addresses: {
+          shipFrom: shipment.stock_location.to_avatax_hash,
+          shipTo: ship_to
+        }
+      }.merge(base_line_hash)
     end
 
     def refund_lines
@@ -78,7 +81,12 @@ module SolidusAvataxCertified
         inv_unit_ids = inv_unit.map { |iu| iu.id }
         return_items = Spree::ReturnItem.where(inventory_unit_id: inv_unit_ids)
         quantity = inv_unit.uniq.count
-        amount = return_items.sum(:amount)
+
+        amount = if return_items.first.respond_to?(:amount)
+            return_items.sum(:amount)
+        else
+          return_items.sum(:pre_tax_amount)
+        end
 
         lines << return_item_line(inv_unit.first.line_item, quantity, amount)
       end
@@ -86,56 +94,72 @@ module SolidusAvataxCertified
 
     def refund_line
       {
-        LineNo: "#{@refund.id}-RA",
-        ItemCode: @refund.transaction_id || 'Refund',
-        Qty: 1,
-        Amount: -@refund.amount.to_f,
-        OriginCode: 'Orig',
-        DestinationCode: 'Dest',
-        CustomerUsageType: order.customer_usage_type,
-        Description: 'Refund',
-        TaxIncluded: true
-      }
+        number: "#{@refund.id}-RA",
+        itemCode: @refund.transaction_id || 'Refund',
+        quantity: 1,
+        amount: -@refund.amount.to_f,
+        description: 'Refund',
+        taxIncluded: true,
+        addresses: {
+          shipFrom: default_ship_from,
+          shipTo: ship_to
+        }
+      }.merge(base_line_hash)
     end
 
     def return_item_line(line_item, quantity, amount)
       {
-        LineNo: "#{line_item.id}-LI",
-        Description: line_item.name[0..255],
-        TaxCode: line_item.tax_category.try(:tax_code) || '',
-        ItemCode: line_item.variant.sku,
-        Qty: quantity,
-        Amount: -amount.to_f,
-        OriginCode: get_stock_location(line_item),
-        DestinationCode: 'Dest',
-        CustomerUsageType: order.customer_usage_type
-      }
+        number: "#{line_item.id}-LI",
+        description: line_item.name[0..255],
+        taxCode: line_item.tax_category.try(:tax_code) || '',
+        itemCode: line_item.variant.sku,
+        quantity: quantity,
+        amount: -amount.to_f,
+        addresses: {
+          shipFrom: get_stock_location(line_item),
+          shipTo: ship_to
+        }
+      }.merge(base_line_hash)
     end
 
     def get_stock_location(li)
       inventory_units = li.inventory_units
 
-      return 'Orig' if inventory_units.blank?
+      return default_ship_from if inventory_units.blank?
 
-      stock_loc_id = inventory_units.first.try(:shipment).try(:stock_location_id)
+      stock_loc = inventory_units.first.try(:shipment).try(:stock_location)
 
-      stock_loc_id.nil? ? 'Orig' : "#{stock_loc_id}"
+      stock_loc.nil? ? {} : stock_loc.to_avatax_hash
+    end
+
+    def ship_to
+      order.ship_address.to_avatax_hash
+    end
+
+    def default_ship_from
+      Spree::StockLocation.order_default.first.to_avatax_hash
     end
 
     private
+
+    def base_line_hash
+      @base_line_hash ||= {
+        customerUsageType: order.customer_usage_type,
+        businessIdentificationNo: business_id_no,
+        exemptionCode: order.user.try(:exemption_number)
+      }
+    end
+
+    def business_id_no
+      order.user.try(:vat_id)
+    end
 
     def discounted?(line_item)
       line_item.adjustments.promotion.eligible.any? || order.adjustments.promotion.eligible.any?
     end
 
-    def logger
-      @logger ||= SolidusAvataxCertified::AvataxLog.new('avalara_order_lines', 'SolidusAvataxCertified::Line', "Building Lines for Order#: #{order.number}")
-    end
-
     def tax_included_in_price?(item)
-      # Need better error handling
-      # if no tax rates, raise error tax rates needs to be set up
-      order.tax_zone.tax_rates.where(tax_category: item.tax_category).try(:first).included_in_price
+      !!rates_for_item(item).try(:first)&.included_in_price
     end
   end
 end

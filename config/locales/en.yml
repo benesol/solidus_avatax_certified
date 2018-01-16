@@ -13,11 +13,15 @@ en:
     avatax_company_code: Avatax Company Code
     avatax_license_key: Avatax License Key
     avatax_account: Avatax Account
-    avatax_endpoint: Avatax Endpoint
     avatax_tax_service_path: Avatax Tax Service Path
     avatax_address_service_path: Avatax Address Service Path
-    enable_avatax_logging: Enable Avatax Logging
-    enable_avatax_log_to_stdout: Enable Logging to STDOUT
+    log: Enable Avatax Logging to log/avatax.log
+    log_to_stdout: Enable Logging to STDOUT
+    tax_calculation: Tax Calculation
+    document_commit: Document Committing
+    address_validation: Address Validation
+    refuse_checkout_address_validation_error: Refuse Checkout if Address Validation Fails
+    customer_can_validate: Customer can Validate address on address page
     enable_avatax_address_validation: Enable Address Validation
     avatax_address_validation_enabled_countries: Address Validation Enabled Countries
     enable_avatax_tax_calculation: Enable Avatax Tax Calculation
@@ -26,10 +30,10 @@ en:
     business_address: Business Address
     country_code: 'Country Code (eg: US, GB ect)'
     avatax_api_keys: Avatax API keys
-    avatax_endpoint_urls: Avatax Endpoint URLs
     avatax_logging: Avatax Logging
     avatax_address_validation: Avatax Address Validation
-    log_files: Log Files
+    avatax_log: Avatax Log
     avatax_tax_calculation: Avatax Tax Calculation
     avatax_document_committing: Avatax Document Committing
     save_preferences: Save Preferences
+    raise_exceptions: Raise Exceptions

@@ -7,28 +7,21 @@ module Spree
       def show
       end
 
-      def get_file_txt_tax_svc
-        send_file "#{Rails.root}/log/tax_svc.log"
-      end
-
-      def get_file_post_order_to_avalara
-        send_file "#{Rails.root}/log/post_order_to_avalara.log"
-      end
-
-      def get_file_avalara_order
-        send_file "#{Rails.root}/log/avalara_order.log"
+      def download_avatax_log
+        send_file "#{Rails.root}/log/avatax.log"
       end
 
       def erase_data
-        File.open("log/#{params['log_name']}.log", 'w') {}
+        File.open("log/avatax.log", 'w') {}
 
         head :ok
       end
 
       def ping_my_service
         mytax = TaxSvc.new
-        pingResult = mytax.ping
-        if pingResult['ResultCode'] == 'Success'
+        response = mytax.ping
+
+        if response.success?
           flash[:success] = 'Ping Successful'
 
         else
@@ -36,21 +29,27 @@ module Spree
         end
 
         respond_to do |format|
-          format.js
+          format.html { render :layout => !request.xhr? }
+          format.js { render :layout => false }
         end
       end
 
       def validate_address
         mytax = TaxSvc.new
-        address = params['address']
+        address = permitted_address_validation_attrs
 
-        address['Country'] = Spree::Country.find_by(id: address['Country']).try(:iso)
-        address['Region'] = Spree::State.find_by(id: address['Region']).try(:abbr)
+        address['country'] = Spree::Country.find_by(id: address['country']).try(:iso)
+        address['region'] = Spree::State.find_by(id: address['region']).try(:abbr)
 
         response = mytax.validate_address(address)
+        result = response.result
+
+        if response.failed?
+          result.merge!({ 'responseCode': 'error', 'errorMessages': response.summary_messages })
+        end
 
         respond_to do |format|
-          format.json { render json: response }
+          format.json { render json: result }
         end
       end
 
@@ -67,11 +66,15 @@ module Spree
       private
 
       def load_avatax_origin
-        if Spree::AvalaraPreference.origin_address.value.blank?
+        if Spree::Avatax::Config.origin.blank?
           @avatax_origin = {}
         else
-          @avatax_origin = JSON.parse(Spree::AvalaraPreference.origin_address.value)
+          @avatax_origin = JSON.parse(Spree::Avatax::Config.origin)
         end
+      end
+
+      def permitted_address_validation_attrs
+        params['address'].permit(:line1, :line2, :city, :postalCode, :country, :region).to_h
       end
     end
   end

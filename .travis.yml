@@ -1,0 +1,12 @@
+sudo: false
+language: ruby
+rvm:
+  - 2.3.3
+env:
+  matrix:
+    - SOLIDUS_BRANCH=v2.3 DB=postgres
+    - SOLIDUS_BRANCH=v2.4 DB=postgres
+    - SOLIDUS_BRANCH=master DB=postgres
+    - SOLIDUS_BRANCH=v2.3 DB=mysql
+    - SOLIDUS_BRANCH=v2.4 DB=mysql
+    - SOLIDUS_BRANCH=master DB=mysql

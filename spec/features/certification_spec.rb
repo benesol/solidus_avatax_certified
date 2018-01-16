@@ -1,19 +1,20 @@
 require 'spec_helper'
 
-describe "Certification" do
-  let!(:avalara_order) { create(:avalara_order, line_items_count: 2, line_items_quantity: 2) }
+describe "Certification", :vcr do
+  let!(:avalara_order) { create(:avalara_order) }
   let(:unique_ship_address) { create(:address, firstname: 'Jimmie', lastname: 'Johnson', address1: '3366 Speedway Blvd', city: 'Lincoln', state_name: 'Alabama', zipcode: 35096) }
   let!(:order) { create(:order_with_line_items, state: 'delivery', user: nil, ship_address: unique_ship_address, email: 'acreilly3@gmail.com') }
   let(:use_code) { create(:avalara_entity_use_code) }
 
   context 'Transactions have been voided/cancelled.' do
-    before do
-      order.avalara_capture_finalize
-      @response = order.cancel_avalara
-    end
+    let!(:completed_order) { create(:completed_avalara_order) }
 
-    it 'should be successful' do
-      expect(@response["ResultCode"]).to eq("Success")
+    describe 'should be successful' do
+      it 'returns status of Cancelled' do
+        response = completed_order.cancel_avalara
+
+        expect(response['status']).to eq('Cancelled')
+      end
     end
   end
 
@@ -21,7 +22,7 @@ describe "Certification" do
     it 'commits an order' do
       res = order.avalara_capture_finalize
 
-      expect(res['ResultCode']).to eq('Success')
+      expect(res['totalTax']).to be_present
     end
   end
 
@@ -31,7 +32,7 @@ describe "Certification" do
     end
 
     it 'does not add additional tax' do
-      expect(avalara_order.avalara_transaction.commit_avatax('SalesInvoice')['TotalTax']).to eq('0')
+      expect(avalara_order.avalara_transaction.commit_avatax('SalesInvoice')['totalTax']).to eq(0)
     end
   end
 
@@ -52,7 +53,7 @@ describe "Certification" do
         response = order.avalara_transaction.commit_avatax_final('ReturnInvoice', refund)
 
         expect(response).to be_kind_of(Hash)
-        expect(response['ResultCode']).to eq('Success')
+        expect(response['totalTax']).to be_present
       end
     end
   end

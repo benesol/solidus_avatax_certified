@@ -1,10 +1,11 @@
 require 'spec_helper'
 
-describe Spree::Payment, :type => :model do
-  subject(:order) { create(:avalara_order) }
+describe Spree::Payment, :vcr do
+  let(:order) { create(:avalara_order) }
 
   let(:gateway) do
-    gateway = Spree::Gateway::Bogus.new(:active => true)
+    gateway = Spree::Gateway::Bogus.new( :active => true, :name => 'Bogus gateway')
+    allow(gateway).to receive_messages :environment => 'test'
     allow(gateway).to receive_messages :source_required => true
     gateway
   end
@@ -25,7 +26,8 @@ describe Spree::Payment, :type => :model do
     payment.source = card
     payment.order = order
     payment.payment_method = gateway
-    payment.amount = 5
+    payment.amount = order.total
+    payment.save
     payment
   end
 
@@ -46,25 +48,27 @@ describe Spree::Payment, :type => :model do
 
 
   describe '#purchase!' do
+    subject do
+      order.avalara_capture_finalize
+      payment.purchase!
+    end
+
     it 'receive avalara_finalize' do
       expect(payment).to receive(:avalara_finalize)
-      payment.purchase!
+      subject
     end
   end
 
   describe '#avalara_finalize' do
-    before do
-      order.update_attributes(additional_tax_total: 1.to_f)
+    subject do
+      order.avalara_capture_finalize
+      payment.complete!
     end
 
-    it 'should update the amount to be the order total' do
-      initial_amount = payment.amount
-      payment.avalara_finalize
-      expect(payment.amount).not_to eq(initial_amount)
-    end
-    it 'should receive avalara_capture_finalize on order' do
-      expect(payment.order).to receive(:avalara_capture_finalize)
-      payment.avalara_finalize
+    it 'should receive avalara_finalize' do
+      expect(payment).to receive(:avalara_finalize)
+
+      subject
     end
   end
 
@@ -76,23 +80,29 @@ describe Spree::Payment, :type => :model do
   end
 
   describe '#cancel_avalara' do
-    it 'should receive cancel order on avalara transaction' do
-      expect(payment.order.avalara_transaction).to receive(:cancel_order)
-      payment.cancel_avalara
-    end
-
     context 'uncommitted order' do
-      it 'should recieve error message' do
-        response = payment.cancel_avalara
-        expect(response['ResultCode']).to eq('Error')
+      let!(:order) { create(:avalara_order) }
+
+      describe 'should fail' do
+        it 'returns error key' do
+          response = payment.cancel_avalara
+          expect(response['error']).to be_present
+        end
       end
     end
 
     context 'committed order' do
-      it 'should receive result of success' do
-        payment.avalara_finalize
-        response = payment.cancel_avalara
-        expect(response['ResultCode']).to eq('Success')
+      let(:order) { create(:completed_avalara_order) }
+
+      subject do
+        order.avalara_capture_finalize
+        payment.cancel_avalara
+      end
+
+      describe 'should be successful' do
+        it 'status returns Cancelled' do
+          expect(subject['status']).to eq('Cancelled')
+        end
       end
     end
   end

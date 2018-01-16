@@ -14,27 +14,36 @@ describe Spree::Admin::AvataxSettingsController, :type => :controller do
     it { should be_success }
   end
 
-  describe '/avatax_settings/get_file_post_order_to_avalara' do
-    subject { get :get_file_post_order_to_avalara }
+  describe '/avatax_settings/download_avatax_log' do
+    before { File.new("#{Rails.root}/log/avatax.log", 'w') }
+    after { File.delete("#{Rails.root}/log/avatax.log") }
+
+    subject { get :download_avatax_log }
     it { should be_success }
   end
 
   describe '/avatax_settings/erase_data' do
     it 'erases the log' do
       Dir.mkdir('log') unless Dir.exist?('log')
-      file = File.open("log/test.log", 'w') { |f| f.write('Hyah!') }
+      file = File.open("log/avatax.log", 'w') { |f| f.write('Hyah!') }
 
-      expect(File.read('log/test.log')).to eq('Hyah!')
+      expect(File.read('log/avatax.log')).to eq('Hyah!')
 
-      get :erase_data, { params: { log_name: 'test' } }
+      get :erase_data
 
-      expect(File.read('log/test.log')).to eq('')
+      expect(File.read('log/avatax.log')).to eq('')
     end
   end
 
   describe '/avatax_settings/ping_my_service' do
+    subject do
+      VCR.use_cassette('ping', allow_playback_repeats: true) do
+        get :ping_my_service
+      end
+    end
+
     it 'flashes message' do
-      subject { get :ping_my_service }
+      subject
       response.should be_success
       flash.should_not be_nil
     end
@@ -57,7 +66,7 @@ describe Spree::Admin::AvataxSettingsController, :type => :controller do
         }
       }
     end
-    subject { process :update, method: :put, params: params }
+    subject { put :update, params: params }
 
     it { is_expected.to redirect_to(spree.admin_avatax_settings_path) }
   end

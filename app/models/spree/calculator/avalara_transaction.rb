@@ -10,16 +10,13 @@ module Spree
 
     def compute_shipment_or_line_item(item)
       order = item.order
-      item_address = order.ship_address || order.billing_address
-      prev_tax_amount = prev_tax_amount(item)
 
-      return prev_tax_amount unless Spree::AvalaraPreference.tax_calculation.is_true?
-      return prev_tax_amount if %w(address cart).include?(order.state)
-      return prev_tax_amount if item_address.nil?
-      return prev_tax_amount unless calculable.zone.include?(item_address)
-
-      avalara_response = get_avalara_response(order)
-      tax_for_item(item, avalara_response)
+      if can_calculate_tax?(order)
+        avalara_response = get_avalara_response(order)
+        tax_for_item(item, avalara_response)
+      else
+        prev_tax_amount(item)
+      end
     end
 
     alias_method :compute_shipment, :compute_shipment_or_line_item
@@ -39,23 +36,41 @@ module Spree
       end
     end
 
+    # Tax Adjustments are not created or calculated until on payment page.
+    # 1. We do not want to calculate tax until address is filled in and shipment type has been selected.
+    # 2. VAT tax adjustments set included on adjustment creation, if the tax initially returns 0, included is set to false causing incorrect calculations.
+    def can_calculate_tax?(order)
+      address = order.tax_address
+
+      return false unless Spree::Avatax::Config.tax_calculation
+      return false if %w(address cart delivery).include?(order.state)
+      return false if address.nil?
+      return false unless calculable.zone.include?(address)
+
+      true
+    end
+
     def get_avalara_response(order)
       Rails.cache.fetch(cache_key(order), time_to_idle: 5.minutes) do
-        order.avalara_capture
+        if order.can_commit?
+          order.avalara_capture_finalize
+        else
+          order.avalara_capture
+        end
       end
     end
 
 
     def long_cache_key(order)
       key = order.avatax_cache_key
-      key << (order.ship_address.try(:cache_key) || order.bill_address.try(:cache_key)).to_s
+      key << order.tax_address.try(:cache_key)
       order.line_items.each do |line_item|
         key << line_item.avatax_cache_key
       end
       order.shipments.each do |shipment|
         key << shipment.avatax_cache_key
       end
-      order.all_adjustments.not_tax do |adj|
+      order.all_adjustments.non_tax do |adj|
         key << adj.avatax_cache_key
       end
       key
@@ -73,11 +88,11 @@ module Spree
       prev_tax_amount = prev_tax_amount(item)
 
       return prev_tax_amount if avalara_response.nil?
-      return prev_tax_amount if avalara_response[:TotalTax] == '0.00'
+      return 0 if avalara_response[:totalTax] == 0.0
 
-      avalara_response['TaxLines'].each do |line|
-        if line['LineNo'] == "#{item.id}-#{item.avatax_line_code}"
-          return line['TaxCalculated'].to_f
+      avalara_response['lines'].each do |line|
+        if line['lineNumber'] == "#{item.id}-#{item.avatax_line_code}"
+          return line['taxCalculated']
         end
       end
       0

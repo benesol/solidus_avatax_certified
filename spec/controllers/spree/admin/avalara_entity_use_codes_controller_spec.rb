@@ -1,7 +1,7 @@
 require 'spec_helper'
 
 describe Spree::Admin::AvalaraEntityUseCodesController do
-  let(:avalara_entity_use_code) { FactoryGirl.create(:avalara_entity_use_code) }
+  let(:avalara_entity_use_code) { FactoryBot.create(:avalara_entity_use_code) }
 
   stub_authorization!
 
@@ -22,7 +22,7 @@ describe Spree::Admin::AvalaraEntityUseCodesController do
   end
 
   describe '#new' do
-    subject {get :new }
+    subject { get :new }
 
     it { is_expected.to be_success }
   end
@@ -42,7 +42,7 @@ describe Spree::Admin::AvalaraEntityUseCodesController do
         }
       }
     end
-    subject { process :update, method: :put, params: params }
+    subject { put :update, params: params }
 
     it { is_expected.to redirect_to(spree.admin_avalara_entity_use_codes_path) }
 
